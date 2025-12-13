@@ -17,11 +17,12 @@ export default function AdminPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
   const [activityType, setActivityType] = useState("meal");
-  const [selectedStudent, setSelectedStudent] = useState("");
+  const [selectedStudents, setSelectedStudents] = useState<number[]>([]);
   const [description, setDescription] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [clockTime, setClockTime] = useState("");
   const [mealTime, setMealTime] = useState("breakfast");
+  const [mealType, setMealType] = useState("rice");
 
   // Attendance states
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
@@ -74,15 +75,26 @@ export default function AdminPage() {
     e.preventDefault();
     console.log({
       activityType,
-      selectedStudent,
+      selectedStudents,
+      mealTime,
+      mealType,
+      clockTime,
       description,
       uploadedFiles
     });
-    alert("Activity uploaded successfully!");
-    setActivityType("photo");
-    setSelectedStudent("");
+    alert("Activity updated successfully for " + selectedStudents.length + " student(s)!");
+    setSelectedStudents([]);
     setDescription("");
     setUploadedFiles([]);
+    setClockTime("");
+  };
+
+  const toggleStudentSelection = (studentId: number) => {
+    setSelectedStudents(prev =>
+      prev.includes(studentId)
+        ? prev.filter(id => id !== studentId)
+        : [...prev, studentId]
+    );
   };
 
   const handleAttendanceChange = (studentId: number, status: string) => {
@@ -479,22 +491,34 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Student Selection */}
+              {/* Student Selection - Multi-select */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Student
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Select Students ({selectedStudents.length} selected)
                 </label>
-                <select
-                  value={selectedStudent}
-                  onChange={(e) => setSelectedStudent(e.target.value)}
-                  required
-                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="">Choose a student...</option>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-200 rounded-xl p-3">
                   {students.map(student => (
-                    <option key={student.id} value={student.name}>{student.name}</option>
+                    <label
+                      key={student.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                        selectedStudents.includes(student.id)
+                          ? "border-indigo-500 bg-indigo-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedStudents.includes(student.id)}
+                        onChange={() => toggleStudentSelection(student.id)}
+                        className="w-4 h-4 text-indigo-600 rounded"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{student.name}</p>
+                        <p className="text-xs text-gray-500">{student.class}</p>
+                      </div>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
 
               {/* Clock In/Out Time Field */}
@@ -515,51 +539,132 @@ export default function AdminPage() {
 
               {/* Meal Time Selection - Only for Meal */}
               {activityType === "meal" && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Meal Time
-                  </label>
-                  <div className="grid grid-cols-3 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setMealTime("breakfast")}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                        mealTime === "breakfast"
-                          ? "border-orange-500 bg-orange-50 text-orange-700"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <Utensils className="w-5 h-5" />
-                      <span className="text-sm font-medium">Breakfast</span>
-                    </button>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Meal Time
+                    </label>
+                    <div className="grid grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setMealTime("breakfast")}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                          mealTime === "breakfast"
+                            ? "border-orange-500 bg-orange-50 text-orange-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <Utensils className="w-5 h-5" />
+                        <span className="text-sm font-medium">Breakfast</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setMealTime("lunch")}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                        mealTime === "lunch"
-                          ? "border-green-500 bg-green-50 text-green-700"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <Utensils className="w-5 h-5" />
-                      <span className="text-sm font-medium">Lunch</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setMealTime("lunch")}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                          mealTime === "lunch"
+                            ? "border-green-500 bg-green-50 text-green-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <Utensils className="w-5 h-5" />
+                        <span className="text-sm font-medium">Lunch</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setMealTime("high-tea")}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-                        mealTime === "high-tea"
-                          ? "border-purple-500 bg-purple-50 text-purple-700"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <Utensils className="w-5 h-5" />
-                      <span className="text-sm font-medium">High Tea</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setMealTime("high-tea")}
+                        className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                          mealTime === "high-tea"
+                            ? "border-purple-500 bg-purple-50 text-purple-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <Utensils className="w-5 h-5" />
+                        <span className="text-sm font-medium">High Tea</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Meal Type
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setMealType("rice")}
+                        className={`p-3 rounded-xl border-2 text-sm font-medium transition-all ${
+                          mealType === "rice"
+                            ? "border-yellow-500 bg-yellow-50 text-yellow-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        🍚 Rice
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMealType("pasta")}
+                        className={`p-3 rounded-xl border-2 text-sm font-medium transition-all ${
+                          mealType === "pasta"
+                            ? "border-red-500 bg-red-50 text-red-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        🍝 Pasta
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMealType("bread")}
+                        className={`p-3 rounded-xl border-2 text-sm font-medium transition-all ${
+                          mealType === "bread"
+                            ? "border-amber-500 bg-amber-50 text-amber-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        🍞 Bread
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMealType("noodles")}
+                        className={`p-3 rounded-xl border-2 text-sm font-medium transition-all ${
+                          mealType === "noodles"
+                            ? "border-orange-500 bg-orange-50 text-orange-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        🍜 Noodles
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMealType("snacks")}
+                        className={`p-3 rounded-xl border-2 text-sm font-medium transition-all ${
+                          mealType === "snacks"
+                            ? "border-pink-500 bg-pink-50 text-pink-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        🍪 Snacks
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMealType("fruits")}
+                        className={`p-3 rounded-xl border-2 text-sm font-medium transition-all ${
+                          mealType === "fruits"
+                            ? "border-green-500 bg-green-50 text-green-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        🍎 Fruits
+                      </button>
+                    </div>
+                  </div>
+                </>
               )}
 
               {/* Description - Only for Meal and Activity */}
