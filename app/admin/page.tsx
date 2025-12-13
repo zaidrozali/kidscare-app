@@ -24,6 +24,9 @@ export default function AdminPage() {
   const [mealTime, setMealTime] = useState("breakfast");
   const [mealType, setMealType] = useState("rice");
 
+  // Dashboard states
+  const [dashboardDate, setDashboardDate] = useState(new Date().toISOString().split('T')[0]);
+
   // Attendance states
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [students] = useState([
@@ -173,6 +176,25 @@ export default function AdminPage() {
         {activeTab === "dashboard" && (
           <div className="space-y-6">
 
+            {/* Date Selector */}
+            <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-sm border border-gray-100">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800">Dashboard Overview</h2>
+                  <p className="text-sm text-gray-500">View activities and statistics for selected date</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-700">Date:</label>
+                  <input
+                    type="date"
+                    value={dashboardDate}
+                    onChange={(e) => setDashboardDate(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white rounded-xl p-4 lg:p-6 border border-gray-100 shadow-sm">
@@ -194,7 +216,7 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <p className="text-2xl lg:text-3xl font-bold text-gray-800">{presentCount}</p>
-                    <p className="text-xs lg:text-sm text-gray-500">Present Today</p>
+                    <p className="text-xs lg:text-sm text-gray-500">Present</p>
                   </div>
                 </div>
               </div>
@@ -206,7 +228,7 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <p className="text-2xl lg:text-3xl font-bold text-gray-800">{absentCount}</p>
-                    <p className="text-xs lg:text-sm text-gray-500">Absent Today</p>
+                    <p className="text-xs lg:text-sm text-gray-500">Absent</p>
                   </div>
                 </div>
               </div>
@@ -226,7 +248,17 @@ export default function AdminPage() {
 
             {/* Recent Activities */}
             <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
-              <h2 className="text-lg lg:text-xl font-bold text-gray-800 mb-4">Recent Activities</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg lg:text-xl font-bold text-gray-800">Activities</h2>
+                <span className="text-sm text-gray-500">
+                  {new Date(dashboardDate).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                  })}
+                </span>
+              </div>
               <div className="space-y-3">
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
                   <div className="bg-purple-500 p-2 rounded-lg">
