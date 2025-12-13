@@ -1,0 +1,106 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PARENT
+  ADMIN
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+enum ActivityType {
+  MEAL
+  CLOCK_IN
+  CLOCK_OUT
+  ACTIVITY
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      UserRole @default(PARENT)
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  children  Student[] @relation("ParentChildren")
+  activities Activity[] @relation("CreatedByUser")
+  attendanceRecords AttendanceRecord[] @relation("MarkedByUser")
+
+  @@index([email])
+}
+
+model Student {
+  id        String   @id @default(cuid())
+  name      String
+  class     String
+  dateOfBirth DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  parentId  String
+  parent    User     @relation("ParentChildren", fields: [parentId], references: [id], onDelete: Cascade)
+
+  activities Activity[]
+  attendanceRecords AttendanceRecord[]
+
+  @@index([parentId])
+}
+
+model Activity {
+  id          String       @id @default(cuid())
+  type        ActivityType
+  description String?
+  imageUrls   String?      @default("[]")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  studentId   String
+  student     Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User         @relation("CreatedByUser", fields: [createdById], references: [id])
+
+  @@index([studentId])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model AttendanceRecord {
+  id        String           @id @default(cuid())
+  date      DateTime
+  status    AttendanceStatus
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  // Relations
+  studentId String
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  markedById String
+  markedBy   User            @relation("MarkedByUser", fields: [markedById], references: [id])
+
+  @@unique([studentId, date])
+  @@index([studentId])
+  @@index([date])
+}
