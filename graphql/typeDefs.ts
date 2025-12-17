@@ -1,6 +1,9 @@
 export const typeDefs = `#graphql
   # Enums
   enum UserRole {
+    SUPER_ADMIN
+    TENANT_ADMIN
+    TEACHER
     PARENT
     ADMIN
   }
@@ -135,13 +138,14 @@ export const typeDefs = `#graphql
     myChildren: [Student!]!
 
     # Activities
-    activities(studentId: String, limit: Int, offset: Int): [Activity!]!
+    activities(studentId: String, date: String, limit: Int, offset: Int): [Activity!]!
     activity(id: ID!): Activity
     recentActivities(limit: Int): [Activity!]!
 
     # Attendance
     attendanceRecords(studentId: String, date: String): [AttendanceRecord!]!
     attendanceRecord(id: ID!): AttendanceRecord
+    attendanceByDate(date: String!): [AttendanceRecord!]!
     attendanceStats(date: String!): AttendanceStats!
     studentAttendance(studentId: String!, startDate: String, endDate: String): [AttendanceRecord!]!
   }

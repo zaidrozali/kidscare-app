@@ -2,6 +2,9 @@ import { prisma } from '@/lib/prisma';
 import { generateToken, hashPassword, comparePassword, getUserFromContext } from '@/lib/auth';
 import { GraphQLError } from 'graphql';
 
+// Helper function to check if user is admin
+const isAdmin = (role: string) => role === 'ADMIN' || role === 'TENANT_ADMIN' || role === 'SUPER_ADMIN';
+
 export const resolvers = {
   Activity: {
     imageUrls: (parent: any) => {
@@ -29,7 +32,7 @@ export const resolvers = {
     // Users
     users: async (_: any, { role }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -54,16 +57,16 @@ export const resolvers = {
       const user = getUserFromContext(context);
       if (!user) throw new GraphQLError('Not authenticated', { extensions: { code: 'UNAUTHENTICATED' } });
 
-      if (user.role === 'ADMIN') {
+      if (isAdmin(user.role)) {
         return await prisma.student.findMany({
-          include: { parent: true, activities: true, attendanceRecords: true },
+          include: { parent: true },
         });
       }
 
       // Parents can only see their own children
       return await prisma.student.findMany({
         where: { parentId: user.userId },
-        include: { parent: true, activities: true, attendanceRecords: true },
+        include: { parent: true },
       });
     },
 
@@ -79,7 +82,7 @@ export const resolvers = {
       if (!student) throw new GraphQLError('Student not found');
 
       // Check authorization
-      if (user.role !== 'ADMIN' && student.parentId !== user.userId) {
+      if (!isAdmin(user.role) && student.parentId !== user.userId) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -97,7 +100,7 @@ export const resolvers = {
     },
 
     // Activities
-    activities: async (_: any, { studentId, limit = 50, offset = 0 }: any, context: any) => {
+    activities: async (_: any, { studentId, date, limit = 50, offset = 0 }: any, context: any) => {
       const user = getUserFromContext(context);
       if (!user) throw new GraphQLError('Not authenticated', { extensions: { code: 'UNAUTHENTICATED' } });
 
@@ -106,7 +109,7 @@ export const resolvers = {
       if (studentId) {
         // Check if user has access to this student
         const student = await prisma.student.findUnique({ where: { id: studentId } });
-        if (user.role !== 'ADMIN' && student?.parentId !== user.userId) {
+        if (!isAdmin(user.role) && student?.parentId !== user.userId) {
           throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
         }
         where.studentId = studentId;
@@ -114,6 +117,15 @@ export const resolvers = {
         // Parents can only see activities for their children
         const children = await prisma.student.findMany({ where: { parentId: user.userId } });
         where.studentId = { in: children.map(c => c.id) };
+      }
+
+      // Filter by date if provided
+      if (date) {
+        const dateObj = new Date(date);
+        where.createdAt = {
+          gte: new Date(dateObj.setHours(0, 0, 0, 0)),
+          lt: new Date(dateObj.setHours(23, 59, 59, 999)),
+        };
       }
 
       return await prisma.activity.findMany({
@@ -137,7 +149,7 @@ export const resolvers = {
       if (!activity) throw new GraphQLError('Activity not found');
 
       // Check authorization
-      if (user.role !== 'ADMIN' && activity.student.parentId !== user.userId) {
+      if (!isAdmin(user.role) && activity.student.parentId !== user.userId) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -172,7 +184,7 @@ export const resolvers = {
 
       if (studentId) {
         const student = await prisma.student.findUnique({ where: { id: studentId } });
-        if (user.role !== 'ADMIN' && student?.parentId !== user.userId) {
+        if (!isAdmin(user.role) && student?.parentId !== user.userId) {
           throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
         }
         where.studentId = studentId;
@@ -207,16 +219,43 @@ export const resolvers = {
 
       if (!record) throw new GraphQLError('Attendance record not found');
 
-      if (user.role !== 'ADMIN' && record.student.parentId !== user.userId) {
+      if (!isAdmin(user.role) && record.student.parentId !== user.userId) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
       return record;
     },
 
+    attendanceByDate: async (_: any, { date }: any, context: any) => {
+      const user = getUserFromContext(context);
+      if (!user) throw new GraphQLError('Not authenticated', { extensions: { code: 'UNAUTHENTICATED' } });
+
+      const dateObj = new Date(date);
+      const startOfDay = new Date(dateObj.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(dateObj.setHours(23, 59, 59, 999));
+
+      const where: any = {
+        date: {
+          gte: startOfDay,
+          lt: endOfDay,
+        },
+      };
+
+      if (user.role === 'PARENT') {
+        const children = await prisma.student.findMany({ where: { parentId: user.userId } });
+        where.studentId = { in: children.map(c => c.id) };
+      }
+
+      return await prisma.attendanceRecord.findMany({
+        where,
+        include: { student: true, markedBy: true },
+        orderBy: { student: { name: 'asc' } },
+      });
+    },
+
     attendanceStats: async (_: any, { date }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -253,7 +292,7 @@ export const resolvers = {
       if (!user) throw new GraphQLError('Not authenticated', { extensions: { code: 'UNAUTHENTICATED' } });
 
       const student = await prisma.student.findUnique({ where: { id: studentId } });
-      if (user.role !== 'ADMIN' && student?.parentId !== user.userId) {
+      if (!isAdmin(user.role) && student?.parentId !== user.userId) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -278,7 +317,15 @@ export const resolvers = {
     register: async (_: any, { input }: any) => {
       const { email, password, name, role, phone, address } = input;
 
-      const existingUser = await prisma.user.findUnique({ where: { email } });
+      // For multi-tenant, use the demo tenant for now
+      const tenant = await prisma.tenant.findFirst({ where: { subdomain: 'demo' } });
+      if (!tenant) {
+        throw new GraphQLError('Tenant not found');
+      }
+
+      const existingUser = await prisma.user.findFirst({
+        where: { email, tenantId: tenant.id }
+      });
       if (existingUser) {
         throw new GraphQLError('Email already in use');
       }
@@ -293,8 +340,9 @@ export const resolvers = {
           role,
           phone,
           address,
+          tenantId: tenant.id,
         },
-        include: { children: true },
+        include: { children: true, tenant: true },
       });
 
       const token = generateToken({
@@ -309,13 +357,22 @@ export const resolvers = {
     login: async (_: any, { input }: any) => {
       const { email, password } = input;
 
-      const user = await prisma.user.findUnique({
+      // Use findFirst since email is only unique per tenant in multi-tenant schema
+      const user = await prisma.user.findFirst({
         where: { email },
-        include: { children: true },
+        include: {
+          children: true,
+          tenant: true,
+        },
       });
 
-      if (!user) {
+      if (!user || !user.password) {
         throw new GraphQLError('Invalid credentials');
+      }
+
+      // Check if tenant is active
+      if (!user.tenant.isActive) {
+        throw new GraphQLError('Account is inactive');
       }
 
       const valid = await comparePassword(password, user.password);
@@ -335,7 +392,7 @@ export const resolvers = {
     // Students
     createStudent: async (_: any, { input }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -347,7 +404,7 @@ export const resolvers = {
 
     updateStudent: async (_: any, { id, ...data }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -360,7 +417,7 @@ export const resolvers = {
 
     deleteStudent: async (_: any, { id }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -371,7 +428,7 @@ export const resolvers = {
     // Activities
     createActivity: async (_: any, { input }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -389,7 +446,7 @@ export const resolvers = {
 
     updateActivity: async (_: any, { id, description, imageUrls }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -406,7 +463,7 @@ export const resolvers = {
 
     deleteActivity: async (_: any, { id }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -417,7 +474,7 @@ export const resolvers = {
     // Attendance
     markAttendance: async (_: any, { input }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -448,7 +505,7 @@ export const resolvers = {
 
     updateAttendance: async (_: any, { input }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -463,7 +520,7 @@ export const resolvers = {
 
     markBulkAttendance: async (_: any, { inputs }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
@@ -498,7 +555,7 @@ export const resolvers = {
 
     deleteAttendanceRecord: async (_: any, { id }: any, context: any) => {
       const user = getUserFromContext(context);
-      if (!user || user.role !== 'ADMIN') {
+      if (!user || !isAdmin(user.role)) {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 

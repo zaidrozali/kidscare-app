@@ -10,9 +10,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Enums
 enum UserRole {
-  PARENT
-  ADMIN
+  SUPER_ADMIN    // Platform admin (your team)
+  TENANT_ADMIN   // Daycare center owner
+  TEACHER        // Staff member
+  PARENT         // Parent/guardian
+}
+
+enum SubscriptionPlan {
+  FREE           // 1 center, 20 students
+  BASIC          // 1 center, 50 students
+  PRO            // 5 centers, 500 students
+  ENTERPRISE     // Unlimited
 }
 
 enum AttendanceStatus {
@@ -28,32 +38,135 @@ enum ActivityType {
   ACTIVITY
 }
 
+// Multi-Tenancy: Tenant represents a daycare center
+model Tenant {
+  id          String           @id @default(cuid())
+  name        String           // "Sunshine Kids Daycare"
+  subdomain   String?          @unique // "sunshine" for sunshine.kidscare.app
+  plan        SubscriptionPlan @default(FREE)
+  maxStudents Int              @default(20)
+  isActive    Boolean          @default(true)
+  settings    String?          @default("{}") // JSON settings
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  // Relations
+  users              User[]
+  students           Student[]
+  activities         Activity[]
+  attendanceRecords  AttendanceRecord[]
+  sessions           Session[]
+  auditLogs          AuditLog[]
+
+  @@index([subdomain])
+  @@index([isActive])
+}
+
 model User {
   id        String   @id @default(cuid())
-  email     String   @unique
+  email     String
   name      String
-  password  String
+  password  String?  // Nullable for OAuth users
   role      UserRole @default(PARENT)
   phone     String?
   address   String?
+  image     String?  // Profile picture
+  emailVerified DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Multi-tenancy
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // OAuth
+  accounts  Account[]
+  sessions  Session[]
 
   // Relations
   children  Student[] @relation("ParentChildren")
   activities Activity[] @relation("CreatedByUser")
   attendanceRecords AttendanceRecord[] @relation("MarkedByUser")
+  auditLogs AuditLog[]
 
+  @@unique([tenantId, email]) // Email unique per tenant
   @@index([email])
+  @@index([tenantId])
+}
+
+// NextAuth Session
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  tenantId     String
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+}
+
+// NextAuth OAuth Accounts
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// Audit Log for compliance
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // "student.create", "activity.update", "user.login"
+  entity    String   // "Student", "Activity", "User"
+  entityId  String?  // ID of the affected entity
+  changes   String?  @default("{}") // JSON before/after
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([action])
 }
 
 model Student {
-  id        String   @id @default(cuid())
-  name      String
-  class     String
+  id          String    @id @default(cuid())
+  name        String
+  class       String
   dateOfBirth DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  image       String?   // Profile picture
+  allergies   String?   // Important for safety
+  notes       String?   // Additional info
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Multi-tenancy
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Relations
   parentId  String
@@ -63,15 +176,21 @@ model Student {
   attendanceRecords AttendanceRecord[]
 
   @@index([parentId])
+  @@index([tenantId])
+  @@index([isActive])
 }
 
 model Activity {
   id          String       @id @default(cuid())
   type        ActivityType
   description String?
-  imageUrls   String?      @default("[]")
+  imageUrls   String?      @default("[]") // JSON array of S3/Cloudflare URLs
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+
+  // Multi-tenancy
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Relations
   studentId   String
@@ -82,6 +201,7 @@ model Activity {
 
   @@index([studentId])
   @@index([createdById])
+  @@index([tenantId])
   @@index([createdAt])
 }
 
@@ -90,8 +210,14 @@ model AttendanceRecord {
   date      DateTime
   status    AttendanceStatus
   notes     String?
+  checkInTime  DateTime?     // Actual check-in time
+  checkOutTime DateTime?     // Actual check-out time
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
+
+  // Multi-tenancy
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Relations
   studentId String
@@ -102,5 +228,6 @@ model AttendanceRecord {
 
   @@unique([studentId, date])
   @@index([studentId])
+  @@index([tenantId])
   @@index([date])
 }

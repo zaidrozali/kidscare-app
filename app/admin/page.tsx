@@ -2,22 +2,28 @@
 
 import {
   Upload, Image as ImageIcon, Utensils, Camera,
-  Clock, Baby, LogIn, LogOut, ShieldAlert,
+  Baby, LogIn, LogOut, ShieldAlert,
   LayoutDashboard, ClipboardCheck, Users, TrendingUp,
   CheckCircle, XCircle, AlertCircle
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useUser } from "@/contexts/UserContext";
 import { useRouter } from "next/navigation";
+import { useQuery, useMutation } from "@apollo/client/react";
+import { GET_STUDENTS, GET_ATTENDANCE_BY_DATE, MARK_ATTENDANCE, CREATE_ACTIVITY } from "@/lib/graphql-queries";
+import AddStudentModal from "@/components/AddStudentModal";
+import { useAuth } from "@/hooks/useAuth";
 
 type TabType = "dashboard" | "attendance" | "upload";
 
 export default function AdminPage() {
   const { isAdmin } = useUser();
   const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
+  const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false);
   const [activityType, setActivityType] = useState("meal");
-  const [selectedStudents, setSelectedStudents] = useState<number[]>([]);
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [description, setDescription] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [clockTime, setClockTime] = useState("");
@@ -29,40 +35,105 @@ export default function AdminPage() {
 
   // Attendance states
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [students] = useState([
-    { id: 1, name: "Eryna Binti Muhammad Zaid", class: "Junior", status: "present" },
-    { id: 2, name: "Ahmad Bin Abdullah", class: "Junior", status: "present" },
-    { id: 3, name: "Sarah Binti Ibrahim", class: "Senior", status: "absent" },
-    { id: 4, name: "Ali Bin Hassan", class: "Junior", status: "present" },
-    { id: 5, name: "Fatimah Binti Yusof", class: "Senior", status: "late" },
-    { id: 6, name: "Hafiz Bin Kamal", class: "Junior", status: "present" },
-  ]);
+  const [attendanceRecords, setAttendanceRecords] = useState<Record<string, string>>({});
 
-  const [attendanceRecords, setAttendanceRecords] = useState(
-    students.reduce((acc, student) => ({
-      ...acc,
-      [student.id]: student.status
-    }), {} as Record<number, string>)
+  // GraphQL Queries
+  const { data: studentsData, loading: studentsLoading, refetch: refetchStudents } = useQuery(GET_STUDENTS, {
+    fetchPolicy: "network-only", // Always fetch fresh data from server
+  });
+  const { data: attendanceData, loading: attendanceLoading, refetch: refetchAttendance } = useQuery(
+    GET_ATTENDANCE_BY_DATE,
+    {
+      variables: { date: attendanceDate },
+      skip: !attendanceDate,
+      fetchPolicy: "network-only", // Always fetch fresh data from server
+    }
   );
 
-  // Protect admin page - redirect if not admin
+  // Debug logging for students data
   useEffect(() => {
-    if (!isAdmin) {
-      router.push("/");
+    if (studentsData) {
+      const students = (studentsData as any)?.students || [];
+      console.log('Students data received:', {
+        count: students.length,
+        students: students,
+        uniqueIds: new Set(students.map((s: any) => s.id)).size,
+      });
     }
-  }, [isAdmin, router]);
+  }, [studentsData]);
+
+  // GraphQL Mutations
+  const [markAttendanceMutation] = useMutation(MARK_ATTENDANCE);
+  const [createActivityMutation] = useMutation(CREATE_ACTIVITY);
+
+  const students = studentsData?.students || [];
+
+  // Update attendance records when data loads
+  useEffect(() => {
+    if (attendanceData?.attendanceByDate && students.length > 0) {
+      const records: Record<string, string> = {};
+      attendanceData.attendanceByDate.forEach((record: any) => {
+        records[record.student.id] = record.status;
+      });
+      // Set default status for students without records
+      students.forEach((student: any) => {
+        if (!records[student.id]) {
+          records[student.id] = "absent"; // Default to absent
+        }
+      });
+      setAttendanceRecords(records);
+    } else if (students.length > 0) {
+      // Initialize all students as absent if no records exist
+      const records: Record<string, string> = {};
+      students.forEach((student: any) => {
+        records[student.id] = "absent";
+      });
+      setAttendanceRecords(records);
+    }
+  }, [attendanceData, students]);
+
+  // Refetch attendance when date changes
+  useEffect(() => {
+    refetchAttendance();
+  }, [attendanceDate, refetchAttendance]);
+
+  // Protect admin page - redirect if not authenticated or not admin
+  useEffect(() => {
+    if (!isLoading) {
+      if (!isAuthenticated) {
+        router.push("/login");
+      } else if (!isAdmin) {
+        router.push("/");
+      }
+    }
+  }, [isAuthenticated, isAdmin, isLoading, router]);
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center p-8">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Show access denied message while redirecting
-  if (!isAdmin) {
+  if (!isAuthenticated || !isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center p-8 bg-white rounded-2xl shadow-lg max-w-md">
           <ShieldAlert className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Access Denied</h1>
           <p className="text-gray-600 mb-4">
-            This page is only accessible to administrators.
+            {!isAuthenticated
+              ? "Please sign in to access this page."
+              : "This page is only accessible to administrators."
+            }
           </p>
-          <p className="text-sm text-gray-500">Redirecting to home...</p>
+          <p className="text-sm text-gray-500">Redirecting...</p>
         </div>
       </div>
     );
@@ -74,25 +145,64 @@ export default function AdminPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log({
-      activityType,
-      selectedStudents,
-      mealTime,
-      mealType,
-      clockTime,
-      description,
-      uploadedFiles
-    });
-    alert("Activity updated successfully for " + selectedStudents.length + " student(s)!");
-    setSelectedStudents([]);
-    setDescription("");
-    setUploadedFiles([]);
-    setClockTime("");
+
+    if (selectedStudents.length === 0) {
+      alert("Please select at least one student");
+      return;
+    }
+
+    try {
+      // Map activity type to GraphQL enum
+      const typeMap: Record<string, string> = {
+        "meal": "MEAL",
+        "clock-in": "CLOCK_IN",
+        "clock-out": "CLOCK_OUT",
+        "activity": "ACTIVITY"
+      };
+
+      // Create activity for each selected student
+      for (const studentId of selectedStudents) {
+        const activityInput: any = {
+          type: typeMap[activityType],
+          studentId: studentId,
+        };
+
+        // Add description for meal and activity types
+        if (activityType === "meal" || activityType === "activity") {
+          let desc = description;
+          if (activityType === "meal") {
+            desc = `${mealTime.charAt(0).toUpperCase() + mealTime.slice(1)}: ${mealType.charAt(0).toUpperCase() + mealType.slice(1)}${description ? ' - ' + description : ''}`;
+          }
+          activityInput.description = desc;
+        }
+
+        // Add time for clock in/out
+        if (activityType === "clock-in" || activityType === "clock-out") {
+          activityInput.description = `${activityType === "clock-in" ? "Clocked in" : "Clocked out"} at ${clockTime}`;
+        }
+
+        // For now, we'll skip file upload (would need to implement file upload to server)
+        activityInput.imageUrls = [];
+
+        await createActivityMutation({
+          variables: { input: activityInput }
+        });
+      }
+
+      alert(`Activity created successfully for ${selectedStudents.length} student(s)!`);
+      setSelectedStudents([]);
+      setDescription("");
+      setUploadedFiles([]);
+      setClockTime("");
+    } catch (error) {
+      console.error("Error creating activity:", error);
+      alert("Error creating activity. Please try again.");
+    }
   };
 
-  const toggleStudentSelection = (studentId: number) => {
+  const toggleStudentSelection = (studentId: string) => {
     setSelectedStudents(prev =>
       prev.includes(studentId)
         ? prev.filter(id => id !== studentId)
@@ -100,31 +210,60 @@ export default function AdminPage() {
     );
   };
 
-  const handleAttendanceChange = (studentId: number, status: string) => {
+  const handleAttendanceChange = async (studentId: string, status: string) => {
+    // Update local state immediately for better UX
     setAttendanceRecords(prev => ({
       ...prev,
       [studentId]: status
     }));
+
+    // Save to database
+    try {
+      await markAttendanceMutation({
+        variables: {
+          input: {
+            studentId,
+            date: attendanceDate,
+            status: status.toUpperCase(),
+            notes: ""
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Error marking attendance:", error);
+      alert("Error saving attendance. Please try again.");
+    }
   };
 
-  const handleSaveAttendance = () => {
-    console.log("Saving attendance:", attendanceRecords);
-    alert("Attendance saved successfully!");
+  const handleSaveAttendance = async () => {
+    alert("All attendance changes have been saved!");
+    refetchAttendance();
   };
 
   // Calculate stats
   const totalStudents = students.length;
-  const presentCount = Object.values(attendanceRecords).filter(s => s === "present").length;
-  const absentCount = Object.values(attendanceRecords).filter(s => s === "absent").length;
-  const lateCount = Object.values(attendanceRecords).filter(s => s === "late").length;
-  const attendanceRate = Math.round((presentCount / totalStudents) * 100);
+  const presentCount = Object.values(attendanceRecords).filter(s => s === "PRESENT" || s === "present").length;
+  const absentCount = Object.values(attendanceRecords).filter(s => s === "ABSENT" || s === "absent").length;
+  const lateCount = Object.values(attendanceRecords).filter(s => s === "LATE" || s === "late").length;
+  const attendanceRate = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
+
+  if (studentsLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gray-50 min-h-full pb-20 lg:pb-0">
       {/* Header */}
-      <div className="bg-gradient-to-br from-purple-600 to-indigo-600 text-white p-4 lg:p-6 pt-8">
+      <div className="bg-gradient-to-br from-indigo-600 to-indigo-500 text-white p-6 pb-16 lg:pb-20">
         <div className="max-w-7xl mx-auto">
-          <h1 className="text-xl lg:text-3xl font-bold">Admin Dashboard</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold">Admin Dashboard</h1>
           <p className="text-sm lg:text-base opacity-90 mt-1">Manage activities, attendance, and content</p>
         </div>
       </div>
@@ -170,7 +309,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <div className="p-4 lg:p-8 max-w-7xl mx-auto">
+      <div className="p-4 lg:p-8 max-w-7xl mx-auto -mt-8">
 
         {/* Dashboard Tab */}
         {activeTab === "dashboard" && (
@@ -246,6 +385,102 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {/* Student Attendance Lists */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Present Students */}
+              <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-sm border border-gray-100">
+                <div className="flex items-center gap-2 mb-4">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                  <h3 className="font-bold text-gray-800">Present ({presentCount})</h3>
+                </div>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {students.filter((s: any) => {
+                    const status = attendanceRecords[s.id];
+                    return status === "PRESENT" || status === "present";
+                  }).length === 0 ? (
+                    <p className="text-sm text-gray-400 italic">No students marked present</p>
+                  ) : (
+                    students.filter((s: any) => {
+                      const status = attendanceRecords[s.id];
+                      return status === "PRESENT" || status === "present";
+                    }).map((student: any) => (
+                      <div key={student.id} className="flex items-center gap-2 p-2 bg-green-50 rounded-lg">
+                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-xs font-bold text-green-700">{student.name.charAt(0)}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-gray-700 block truncate">{student.name}</span>
+                          <span className="text-xs text-gray-500">{student.class}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Absent Students */}
+              <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-sm border border-gray-100">
+                <div className="flex items-center gap-2 mb-4">
+                  <XCircle className="w-5 h-5 text-red-600" />
+                  <h3 className="font-bold text-gray-800">Absent ({absentCount})</h3>
+                </div>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {students.filter((s: any) => {
+                    const status = attendanceRecords[s.id];
+                    return status === "ABSENT" || status === "absent";
+                  }).length === 0 ? (
+                    <p className="text-sm text-gray-400 italic">No students marked absent</p>
+                  ) : (
+                    students.filter((s: any) => {
+                      const status = attendanceRecords[s.id];
+                      return status === "ABSENT" || status === "absent";
+                    }).map((student: any) => (
+                      <div key={student.id} className="flex items-center gap-2 p-2 bg-red-50 rounded-lg">
+                        <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-xs font-bold text-red-700">{student.name.charAt(0)}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-gray-700 block truncate">{student.name}</span>
+                          <span className="text-xs text-gray-500">{student.class}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Late Students */}
+              <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-sm border border-gray-100">
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertCircle className="w-5 h-5 text-yellow-600" />
+                  <h3 className="font-bold text-gray-800">Late ({lateCount})</h3>
+                </div>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {students.filter((s: any) => {
+                    const status = attendanceRecords[s.id];
+                    return status === "LATE" || status === "late";
+                  }).length === 0 ? (
+                    <p className="text-sm text-gray-400 italic">No students marked late</p>
+                  ) : (
+                    students.filter((s: any) => {
+                      const status = attendanceRecords[s.id];
+                      return status === "LATE" || status === "late";
+                    }).map((student: any) => (
+                      <div key={student.id} className="flex items-center gap-2 p-2 bg-yellow-50 rounded-lg">
+                        <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-xs font-bold text-yellow-700">{student.name.charAt(0)}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm text-gray-700 block truncate">{student.name}</span>
+                          <span className="text-xs text-gray-500">{student.class}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Recent Activities */}
             <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-4">
@@ -312,9 +547,12 @@ export default function AdminPage() {
                   <span className="text-sm font-medium text-purple-900">Upload Activity</span>
                 </button>
 
-                <button className="flex flex-col items-center gap-2 p-4 rounded-xl bg-green-50 hover:bg-green-100 transition-colors">
+                <button
+                  onClick={() => setIsAddStudentModalOpen(true)}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl bg-green-50 hover:bg-green-100 transition-colors"
+                >
                   <Baby className="w-8 h-8 text-green-600" />
-                  <span className="text-sm font-medium text-green-900">Manage Students</span>
+                  <span className="text-sm font-medium text-green-900">Add Student</span>
                 </button>
 
                 <button className="flex flex-col items-center gap-2 p-4 rounded-xl bg-orange-50 hover:bg-orange-100 transition-colors">
@@ -388,7 +626,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {students.map((student) => (
+                    {students.map((student: any) => (
                       <tr key={student.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -406,7 +644,7 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleAttendanceChange(student.id, "present")}
                               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                attendanceRecords[student.id] === "present"
+                                (attendanceRecords[student.id] === "PRESENT" || attendanceRecords[student.id] === "present")
                                   ? "bg-green-500 text-white"
                                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                               }`}
@@ -416,7 +654,7 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleAttendanceChange(student.id, "absent")}
                               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                attendanceRecords[student.id] === "absent"
+                                (attendanceRecords[student.id] === "ABSENT" || attendanceRecords[student.id] === "absent")
                                   ? "bg-red-500 text-white"
                                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                               }`}
@@ -426,7 +664,7 @@ export default function AdminPage() {
                             <button
                               onClick={() => handleAttendanceChange(student.id, "late")}
                               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                attendanceRecords[student.id] === "late"
+                                (attendanceRecords[student.id] === "LATE" || attendanceRecords[student.id] === "late")
                                   ? "bg-yellow-500 text-white"
                                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                               }`}
@@ -446,7 +684,7 @@ export default function AdminPage() {
                   onClick={handleSaveAttendance}
                   className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl transition-colors"
                 >
-                  Save Attendance
+                  Attendance Saved
                 </button>
               </div>
             </div>
@@ -529,7 +767,7 @@ export default function AdminPage() {
                   Select Students ({selectedStudents.length} selected)
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-200 rounded-xl p-3">
-                  {students.map(student => (
+                  {students.map((student: any) => (
                     <label
                       key={student.id}
                       className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
@@ -774,6 +1012,12 @@ export default function AdminPage() {
         )}
 
       </div>
+
+      {/* Add Student Modal */}
+      <AddStudentModal
+        isOpen={isAddStudentModalOpen}
+        onClose={() => setIsAddStudentModalOpen(false)}
+      />
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { UserProvider } from "@/contexts/UserContext";
 import { ApolloProvider } from "@/contexts/ApolloProvider";
-import { LayoutContent } from "@/components/LayoutContent";
+import { DesktopNav, MobileNav } from "@/components/Navigation";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,7 +22,20 @@ export default function RootLayout({
       <body className={`${inter.className} bg-gray-100 min-h-screen`}>
         <ApolloProvider>
           <UserProvider>
-            <LayoutContent>{children}</LayoutContent>
+            <div className="flex min-h-screen">
+              {/* Sidebar Navigation - Hidden on mobile, visible on desktop */}
+              <DesktopNav />
+
+              {/* Main Content Area */}
+              <div className="flex-1 lg:ml-64">
+                <div className="w-full bg-white min-h-screen relative pb-20 lg:pb-0">
+                  {children}
+                </div>
+              </div>
+
+              {/* Bottom Navigation Bar - Visible on mobile/tablet, hidden on desktop */}
+              <MobileNav />
+            </div>
           </UserProvider>
         </ApolloProvider>
       </body>

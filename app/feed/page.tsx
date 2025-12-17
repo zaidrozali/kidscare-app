@@ -1,19 +1,17 @@
-import { ArrowLeftRight, Utensils, LogIn, LogOut, Image as ImageIcon } from "lucide-react";
+import { Utensils, LogIn, LogOut, Image as ImageIcon } from "lucide-react";
 
 export default function Feed() {
   return (
     <div className="bg-gray-50 min-h-full pb-20 lg:pb-0">
       {/* Header */}
-      <div className="bg-indigo-500 text-white p-4 lg:p-6 pt-8 sticky top-0 z-10 shadow-md">
-        <div className="flex justify-between items-center max-w-7xl mx-auto">
-          <div className="text-center w-full">
-             <h2 className="text-sm lg:text-lg font-medium opacity-90">ERYNA BINTI MUHAMMAD ZAID</h2>
-          </div>
-          <ArrowLeftRight size={20} className="absolute right-4 lg:right-8" />
+      <div className="bg-gradient-to-br from-indigo-600 to-indigo-500 text-white p-6 pb-16 lg:pb-20">
+        <div className="max-w-7xl mx-auto">
+          <h1 className="text-2xl lg:text-3xl font-bold">Activity Feed</h1>
+          <p className="text-sm lg:text-base opacity-90 mt-1">View your child's daily activities and updates</p>
         </div>
       </div>
 
-      <div className="p-4 lg:p-8 space-y-6 max-w-5xl mx-auto">
+      <div className="p-4 lg:p-8 space-y-6 max-w-5xl mx-auto -mt-8">
 
         {/* Card: Lunch */}
         <div className="bg-white rounded-2xl p-4 lg:p-6 shadow-sm border border-gray-100">

@@ -30,7 +30,8 @@ export async function comparePassword(password: string, hash: string): Promise<b
 }
 
 export function getUserFromContext(context: any): JWTPayload | null {
-  const authHeader = context.req?.headers?.authorization;
+  // Next.js App Router uses Headers API, not plain object
+  const authHeader = context.req?.headers?.get?.('authorization') || context.req?.headers?.authorization;
   if (!authHeader) return null;
 
   const token = authHeader.replace('Bearer ', '');
