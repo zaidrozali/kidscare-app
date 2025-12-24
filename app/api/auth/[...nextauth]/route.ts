@@ -76,7 +76,7 @@ const handler = NextAuth({
   ],
 
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user }) {
       if (user) {
         token.role = user.role;
         token.tenantId = user.tenantId;
@@ -84,18 +84,22 @@ const handler = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
+      if (session.user && token.sub) {
         session.user.id = token.sub;
-        session.user.role = token.role as string;
-        session.user.tenantId = token.tenantId as string;
+        session.user.role = token.role;
+        session.user.tenantId = token.tenantId;
       }
       return session;
     },
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account }) {
       // OAuth sign-in logic
       if (account?.provider === "google") {
         // For OAuth users, assign them to a default tenant or create one
         // This is a simplified version - in production, you'd have a tenant selection flow
+        if (!user.email) {
+          return false; // Reject sign-in if email is missing
+        }
+
         const existingUser = await prisma.user.findFirst({
           where: { email: user.email },
         });

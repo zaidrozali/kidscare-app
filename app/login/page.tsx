@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useMutation } from "@apollo/client/react";
+import { useRouter } from "next/navigation";
 import { useUser } from "@/contexts/UserContext";
 import { LogIn, Mail, Lock, AlertCircle } from "lucide-react";
 import { LOGIN } from "@/lib/graphql-queries";
 
 export default function LoginPage() {
+  const router = useRouter();
   const { setRole } = useUser();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -28,11 +30,11 @@ export default function LoginPage() {
       localStorage.setItem("userEmail", data.login.user.email);
       localStorage.setItem("userRole", role); // Store original role for auth hook
 
-      // Redirect based on role - use window.location for full page reload
+      // Redirect based on role using Next.js router
       if (roleLower === "admin" || roleLower === "tenant_admin") {
-        window.location.href = "/admin";
+        router.push("/admin");
       } else {
-        window.location.href = "/";
+        router.push("/");
       }
     },
     onError: (error) => {

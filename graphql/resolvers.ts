@@ -376,6 +376,7 @@ export const resolvers = {
       }
 
       const valid = await comparePassword(password, user.password);
+
       if (!valid) {
         throw new GraphQLError('Invalid credentials');
       }
@@ -396,8 +397,28 @@ export const resolvers = {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
+      // Get user's tenant ID
+      const currentUser = await prisma.user.findUnique({
+        where: { id: user.userId },
+        select: { tenantId: true }
+      });
+
+      if (!currentUser) {
+        throw new GraphQLError('User not found');
+      }
+
+      // Convert dateOfBirth to DateTime if it exists
+      const studentData: any = {
+        ...input,
+        tenantId: currentUser.tenantId,
+      };
+
+      if (input.dateOfBirth) {
+        studentData.dateOfBirth = new Date(input.dateOfBirth);
+      }
+
       return await prisma.student.create({
-        data: input,
+        data: studentData,
         include: { parent: true, activities: true, attendanceRecords: true },
       });
     },
@@ -432,6 +453,16 @@ export const resolvers = {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
+      // Get user's tenant ID
+      const currentUser = await prisma.user.findUnique({
+        where: { id: user.userId },
+        select: { tenantId: true }
+      });
+
+      if (!currentUser) {
+        throw new GraphQLError('User not found');
+      }
+
       const { imageUrls, ...rest } = input;
 
       return await prisma.activity.create({
@@ -439,6 +470,7 @@ export const resolvers = {
           ...rest,
           imageUrls: imageUrls ? JSON.stringify(imageUrls) : '[]',
           createdById: user.userId,
+          tenantId: currentUser.tenantId,
         },
         include: { student: true, createdBy: true },
       });
@@ -480,6 +512,16 @@ export const resolvers = {
 
       const { studentId, date, status, notes } = input;
 
+      // Get user's tenant ID
+      const currentUser = await prisma.user.findUnique({
+        where: { id: user.userId },
+        select: { tenantId: true }
+      });
+
+      if (!currentUser) {
+        throw new GraphQLError('User not found');
+      }
+
       return await prisma.attendanceRecord.upsert({
         where: {
           studentId_date: {
@@ -498,6 +540,7 @@ export const resolvers = {
           status,
           notes,
           markedById: user.userId,
+          tenantId: currentUser.tenantId,
         },
         include: { student: true, markedBy: true },
       });
@@ -524,6 +567,16 @@ export const resolvers = {
         throw new GraphQLError('Not authorized', { extensions: { code: 'FORBIDDEN' } });
       }
 
+      // Get user's tenant ID
+      const currentUser = await prisma.user.findUnique({
+        where: { id: user.userId },
+        select: { tenantId: true }
+      });
+
+      if (!currentUser) {
+        throw new GraphQLError('User not found');
+      }
+
       const records = await Promise.all(
         inputs.map((input: any) =>
           prisma.attendanceRecord.upsert({
@@ -544,6 +597,7 @@ export const resolvers = {
               status: input.status,
               notes: input.notes,
               markedById: user.userId,
+              tenantId: currentUser.tenantId,
             },
             include: { student: true, markedBy: true },
           })

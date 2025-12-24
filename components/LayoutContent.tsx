@@ -14,9 +14,9 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !isLoginPage) {
-      router.push("/login");
+      router.replace("/login");
     }
-  }, [isAuthenticated, isLoading, isLoginPage, router]);
+  }, [isLoading, isAuthenticated, isLoginPage, router]);
 
   // Show login page without auth check
   if (isLoginPage) {
